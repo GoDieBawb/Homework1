@@ -41,6 +41,12 @@
 #include <X11/Xlib.h>
 #include <X11/keysym.h>
 #include <GL/glx.h>
+#include <math.h>
+#include <cmath>
+
+extern "C" {
+#include "fonts.h"
+}
 
 #define WINDOW_WIDTH  800
 #define WINDOW_HEIGHT 600
@@ -77,9 +83,9 @@ struct Bubbler {
 };
 
 struct Game {
-	Shape box;
+	Shape box[5];
 	Bubbler bubbler;
-	Particle particle[5000];
+	Particle particle[50000];
 	int n;
 	Game() {n=0;}
 };
@@ -94,11 +100,18 @@ int  check_keys(XEvent *e, Game *game);
 void movement(Game *game);
 void render(Game *game);
 void makeParticle(Game *game, int x, int y);
+void makeBox(float xSpot, float ySpot);
+bool checkBoxCollision(Game *game, Shape s);
+bool checkCircleCollision(Shape s);
+Rect boxToRect(Shape s);
 
 bool isOn;
+int  boxHeight = 15;
+int  boxWidth  = 25;
 
 int main(void)
 {
+
 	int done=0;
 	srand(time(NULL));
 	initXWindows();
@@ -111,15 +124,41 @@ int main(void)
 
 	//init Bubbler
 	game.bubbler.box.width = 25;
-	game.bubbler.box.height = 10;
-	game.bubbler.box.center.x = 120 + 5*65;
-	game.bubbler.box.center.y = 500 - 5*60 + WINDOW_HEIGHT/3;
+	game.bubbler.box.height = 15;
+	game.bubbler.box.center.x = WINDOW_WIDTH/5;
+	game.bubbler.box.center.y = WINDOW_HEIGHT-WINDOW_HEIGHT/10 + 15 * 2;
+
+	float w = 80;
+	float h = 15;
 
 	//declare a box shape
-	game.box.width = 100;
-	game.box.height = 10;
-	game.box.center.x = 120 + 5*65;
-	game.box.center.y = 500 - 5*60;
+	Shape b1,b2,b3,b4,b5;
+
+	b1.center.x	= WINDOW_WIDTH/5;
+	b1.center.y = WINDOW_HEIGHT-WINDOW_HEIGHT/10 - h *5;
+
+	b2.center.x = WINDOW_WIDTH/5 + w;
+	b2.center.y = WINDOW_HEIGHT-WINDOW_HEIGHT/10 - h*10;
+
+	b3.center.x = WINDOW_WIDTH/5 + w*2;
+	b3.center.y = WINDOW_HEIGHT-WINDOW_HEIGHT/10 - h*15;
+
+	b4.center.x = WINDOW_WIDTH/5 + w*3;
+	b4.center.y = WINDOW_HEIGHT-WINDOW_HEIGHT/10 - h*20;
+
+	b5.center.x = WINDOW_WIDTH/5 + w*4;
+	b5.center.y = WINDOW_HEIGHT-WINDOW_HEIGHT/10 - h*25;
+
+	game.box[0] = b1;
+	game.box[1] = b2;
+	game.box[2] = b3;
+	game.box[3] = b4;
+	game.box[4] = b5;
+
+	for (int i = 0; i < 5; i++) {
+		game.box[i].width = 80;
+		game.box[i].width = 15;
+	}
 
 	//start animation
 	while (!done) {
@@ -131,13 +170,14 @@ int main(void)
 		}
 
 		if (isOn) {
-			makeParticle(&game, 120 + 5*65, 500 - 5*60 +WINDOW_HEIGHT/3);		
+			makeParticle(&game, WINDOW_WIDTH/5, WINDOW_HEIGHT-WINDOW_HEIGHT/10 + 15 * 2);		
 		}
 
 		movement(&game);
 		render(&game);
 		glXSwapBuffers(dpy, win);
 	}
+	cleanup_fonts();
 	cleanupXWindows();
 	return 0;
 }
@@ -196,13 +236,17 @@ void init_opengl(void)
 	glOrtho(0, WINDOW_WIDTH, 0, WINDOW_HEIGHT, -1, 1);
 	//Set the screen background color
 	glClearColor(0.1, 0.1, 0.1, 1.0);
+	//Allow Fonts
+	glEnable(GL_TEXTURE_2D);
+	initialize_fonts();
+
 }
 
 void makeParticle(Game *game, int x, int y)
 {
 	if (game->n >= MAX_PARTICLES)
 		return;
-	std::cout << "makeParticle() " << x << " " << y << std::endl;
+	//std::cout << "makeParticle() " << x << " " << y << std::endl;
 	//position of particle
 	Particle *p = &game->particle[game->n];
 	p->s.center.x = x;
@@ -283,31 +327,69 @@ void movement(Game *game)
 
 	//check for off-screen
 	if (p->s.center.y < 0.0) {
-		std::cout << "off screen" << std::endl;
+		//std::cout << "off screen" << std::endl;
 		game->particle[i] = game->particle[game->n-1];
 		game->n -= 1;
 	}
 
-	//Check for Box Collide
-	int xSpot   = p->s.center.x;
-	int ySpot   = p->s.center.y; 
-	int boxY    = game->box.center.y;
-	int boxX    = game->box.center.x;
-	int bHeight = 10;
-	int bWidth  = 100;	
 
-	if (xSpot > boxX-bWidth && xSpot < boxX+bWidth) {
-
-		if (ySpot > boxY-bHeight && ySpot < boxY+bHeight) {
-			p->velocity.y = -p->velocity.y/10;
-		}
-
+	if (checkBoxCollision(game, p->s) || checkCircleCollision(p->s)) {
+		//std::cout << "Collide\n";
+		p->s.center.y++;
+		p->velocity.y = -p->velocity.y/2;
 	}
 
 	//Apply Gravity
-	p->velocity.y -= .0001;
+	p->velocity.y -= .00015;
 
     }
+
+}
+
+bool checkBoxCollision(Game *game, Shape s) {
+
+	float xSpot = s.center.x;
+	float ySpot = s.center.y;
+
+	for (int i = 0; i < 5; i++) {
+
+		//float bWidth  = game->box[i].width;
+		//float bHeight = game->box[i].height;
+		float bWidth  = 80;
+		float bHeight = 15;
+		float boxX    = game->box[i].center.x;
+		float boxY    = game->box[i].center.y;
+
+		//std::cout << "w " << bWidth << " h " << bHeight << " x " << boxX << " y " << boxY << std::endl;
+
+		if (xSpot > boxX-bWidth && xSpot < boxX+bWidth) {
+
+			if (ySpot > boxY-bHeight && ySpot < boxY+bHeight) {
+				return true;
+			}
+
+		}
+
+	}	
+
+	return false;
+
+}
+
+bool checkCircleCollision(Shape s) {
+
+	float xSpot = s.center.x;
+	float ySpot = s.center.y;
+	float cX	= WINDOW_WIDTH-120;
+	float cY	= 10;
+	float dist  = pow((xSpot - cX),2) + pow((ySpot - cY),2);
+	dist	    = sqrt(dist);
+
+	if (dist <= 120) {
+		return true;
+	}
+
+	return false;
 
 }
 
@@ -342,12 +424,77 @@ bool checkBubblerClick(Game *game, int x, int y) {
 
 }
 
+void makeBox(float xSpot, float ySpot) 
+{
+
+	float w,h;
+	Shape shape;
+	glColor3ub(90,140,90);
+	shape.width    = 100;
+	shape.height   = 15;
+	shape.center.x = xSpot;
+	shape.center.y = ySpot;
+	glPushMatrix();
+	glTranslatef(shape.center.x, shape.center.y, shape.center.z);
+	w = shape.width;
+	h = shape.height;
+	glBegin(GL_QUADS);
+		glVertex2i(-w,-h);
+		glVertex2i(-w, h);
+		glVertex2i( w, h);
+		glVertex2i( w,-h);
+	glEnd();
+	glPopMatrix();
+
+}
+
+void drawCircle(float cx, float cy, float r, int num_segments)
+{
+
+    glBegin(GL_LINE_LOOP);
+    for(int ii = 0; ii < num_segments; ii++)
+    {
+
+        float theta = 2.0f * 3.1415926f * float(ii) / float(num_segments);//get the current angle
+
+        float x = r * cosf(theta);//calculate the x component
+        float y = r * sinf(theta);//calculate the y component
+
+        glVertex2f(x + cx, y + cy);//output vertex
+
+    }
+    glEnd();
+}
+
+
+Rect boxToRect(Shape s) {
+
+	Rect rect;
+	rect.centerx = s.center.x;
+	rect.centery = s.center.y;
+	rect.width	 = 160;
+	rect.height  = 30;
+	rect.bot	 = s.center.y - 15;
+	rect.top 	 = s.center.y + 15;
+	rect.left    = s.center.x - 70;
+	rect.right   = s.center.x + 70;
+	return rect;
+
+}
+
 void render(Game *game)
 {
+
 	float w, h;
+
 	glClear(GL_COLOR_BUFFER_BIT);
+
+	Rect r = boxToRect(game->box[0]);
+
+	ggprint8b(&r, 16, 0x00dddd00, "B - Bigfoot");
 	//Draw shapes...
 
+	/*
 	//draw box
 	Shape *s;
 	glColor3ub(90,140,90);
@@ -363,6 +510,10 @@ void render(Game *game)
 		glVertex2i( w,-h);
 	glEnd();
 	glPopMatrix();
+	*/
+
+	//draw circle
+	drawCircle(WINDOW_WIDTH-120,10,120,300);
 
 	//draw box
 	Shape *s1;
@@ -379,6 +530,12 @@ void render(Game *game)
 		glVertex2i( w,-h);
 	glEnd();
 	glPopMatrix();
+
+	for (int i = 0; i < 5; i++) {
+		float xSpot = game->box[i].center.x;
+		float ySpot = game->box[i].center.y;
+		makeBox(xSpot,ySpot);
+	}
 
 	//draw all particles here
 	glPushMatrix();
