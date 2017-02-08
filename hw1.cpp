@@ -162,6 +162,7 @@ int main(void)
 
 	//start animation
 	while (!done) {
+
 		while (XPending(dpy)) {
 			XEvent e;
 			XNextEvent(dpy, &e);
@@ -176,7 +177,9 @@ int main(void)
 		movement(&game);
 		render(&game);
 		glXSwapBuffers(dpy, win);
+
 	}
+
 	cleanup_fonts();
 	cleanupXWindows();
 	return 0;
@@ -297,9 +300,15 @@ int check_keys(XEvent *e, Game *game)
 	//Was there input from the keyboard?
 	if (e->type == KeyPress) {
 		int key = XLookupKeysym(&e->xkey, 0);
+
 		if (key == XK_Escape) {
 			return 1;
 		}
+
+		if (key == 98) {
+			isOn = !isOn;		
+		}
+
 		//You may check other keys here.
 
 
@@ -333,10 +342,16 @@ void movement(Game *game)
 	}
 
 
-	if (checkBoxCollision(game, p->s) || checkCircleCollision(p->s)) {
+	if (checkBoxCollision(game, p->s)) {
 		//std::cout << "Collide\n";
 		p->s.center.y++;
-		p->velocity.y = -p->velocity.y/2;
+		p->velocity.y *= -.5;
+	}
+
+	if (checkCircleCollision(p->s)) {
+		p->s.center.y++;
+		p->velocity.y *= -.1;
+		p->velocity.x *= -1;
 	}
 
 	//Apply Gravity
@@ -466,6 +481,27 @@ void drawCircle(float cx, float cy, float r, int num_segments)
     glEnd();
 }
 
+void drawFilledCircle(GLfloat x, GLfloat y, GLfloat radius) {
+
+	
+	int i;
+	int triangleAmount = 20; //# of triangles used to draw circle
+	float PI		   = 3.1415926;
+	
+	//GLfloat radius = 0.8f; //radius
+	GLfloat twicePi = 2.0f * PI;
+	glColor3ub(90,140,90);	
+
+	glBegin(GL_TRIANGLE_FAN);
+		glVertex2f(x, y); // center of circle
+		for(i = 0; i <= triangleAmount;i++) { 
+			glVertex2f(
+		            x + (radius * cos(i *  twicePi / triangleAmount)), 
+			    y + (radius * sin(i * twicePi / triangleAmount))
+			);
+		}
+	glEnd();
+}
 
 Rect boxToRect(Shape s) {
 
@@ -476,8 +512,8 @@ Rect boxToRect(Shape s) {
 	rect.height  = 30;
 	rect.bot	 = s.center.y - 15;
 	rect.top 	 = s.center.y + 15;
-	rect.left    = s.center.x - 70;
-	rect.right   = s.center.x + 70;
+	rect.left    = s.center.x - 40;
+	rect.right   = s.center.x + 40;
 	return rect;
 
 }
@@ -489,9 +525,6 @@ void render(Game *game)
 
 	glClear(GL_COLOR_BUFFER_BIT);
 
-	Rect r = boxToRect(game->box[0]);
-
-	ggprint8b(&r, 16, 0x00dddd00, "B - Bigfoot");
 	//Draw shapes...
 
 	/*
@@ -513,7 +546,7 @@ void render(Game *game)
 	*/
 
 	//draw circle
-	drawCircle(WINDOW_WIDTH-120,10,120,300);
+	drawFilledCircle(WINDOW_WIDTH-120,10,120);
 
 	//draw box
 	Shape *s1;
@@ -536,6 +569,19 @@ void render(Game *game)
 		float ySpot = game->box[i].center.y;
 		makeBox(xSpot,ySpot);
 	}
+
+	Rect r;
+
+	r = boxToRect(game->box[0]);
+	ggprint8b(&r, 32, 0x00dddd00, "Requirements");
+	r = boxToRect(game->box[1]);
+	ggprint8b(&r, 32, 0x00dddd00, "Design");
+	r = boxToRect(game->box[2]);
+	ggprint8b(&r, 32, 0x00dddd00, "Coding");
+	r = boxToRect(game->box[3]);
+	ggprint8b(&r, 32, 0x00dddd00, "Testing");
+	r = boxToRect(game->box[4]);
+	ggprint8b(&r, 32, 0x00dddd00, "Maintenance");
 
 	//draw all particles here
 	glPushMatrix();
